@@ -29,8 +29,8 @@ except ImportError:
 
 PROJECT_ID = 'gen-lang-client-0351304067'
 REGION = 'us-central1'
-GCS_BUCKET = 'us-central1-dev-56b20d84-bucket'
-GCS_INPUT_PATH = 'input/data/Cleaned-COVID.csv'
+GCS_BUCKET = 'us-central1-dev-a7e94831-bucket'
+GCS_INPUT_PATH = 'data/input/Cleaned-COVID.csv'
 DATAFLOW_JOB_NAME = 'etl-pipeline'
 BQ_DATASET = 'processed_data'
 BQ_TABLE = 'transformed_table'
@@ -244,7 +244,7 @@ def validate_csv_content(content: str, filename: str) -> int:
             raise ValueError("CSV has no header row")
         
         # Check for required columns
-        required_cols = ['id', 'name', 'value']  # Adjust based on your schema
+        required_cols = ['entity', 'Day', 'total_confirmed_deaths']  # Adjust based on your schema
         missing_cols = [col for col in required_cols if col not in headers]
         if missing_cols:
             raise ValueError(f"Missing required columns: {missing_cols}")
@@ -324,21 +324,39 @@ def validate_record_structure(record: Dict[str, Any], context: str):
     if 'timestamp' in record and record['timestamp']:
         validate_timestamp(record['timestamp'], context)
 
+# def validate_csv_record(record: Dict[str, str], context: str):
+#     """Validate CSV record (all values are strings from CSV)"""
+#     # Check for required fields
+#     if not record.get('entity', '').strip():
+#         raise ValueError(f"{context}: 'id' field is empty")
+    
+#     if not record.get('Day', '').strip():
+#         raise ValueError(f"{context}: 'name' field is empty")
+    
+#     # Validate numeric fields
+#     if 'value' in record and record['value']:
+#         try:
+#             float(record['value'])
+#         except ValueError:
+#             raise ValueError(f"{context}: 'value' is not numeric: '{record['value']}'")
 def validate_csv_record(record: Dict[str, str], context: str):
-    """Validate CSV record (all values are strings from CSV)"""
-    # Check for required fields
-    if not record.get('id', '').strip():
-        raise ValueError(f"{context}: 'id' field is empty")
+    """Validate CSV record for COVID data"""
+    required_fields = ['entity', 'Day', 'total_confirmed_deaths']
+    for field in required_fields:
+        if not record.get(field, '').strip():
+            logging.warning(f"{context}: '{field}' field is empty")
     
-    if not record.get('name', '').strip():
-        raise ValueError(f"{context}: 'name' field is empty")
-    
-    # Validate numeric fields
-    if 'value' in record and record['value']:
+    if 'total_confirmed_deaths' in record and record['total_confirmed_deaths']:
         try:
-            float(record['value'])
+            float(record['total_confirmed_deaths'])
         except ValueError:
-            raise ValueError(f"{context}: 'value' is not numeric: '{record['value']}'")
+            raise ValueError(f"{context}: 'total_confirmed_deaths' is not numeric: '{record['total_confirmed_deaths']}'")
+    
+    if 'Day' in record and record['Day']:
+        try:
+            datetime.strptime(record['Day'], '%Y-%m-%d')
+        except ValueError:
+            raise ValueError(f"{context}: 'Day' is not in valid date format (YYYY-MM-DD): '{record['Day']}'")
 
 def validate_timestamp(timestamp_val: Any, context: str):
     """Validate timestamp format"""
@@ -451,8 +469,6 @@ run_dataflow_pipeline = BeamRunPythonPipelineOperator(
         'project_id': PROJECT_ID,
         'location': REGION,
         'job_name': DATAFLOW_JOB_NAME,
-        'temp_location': f'gs://{GCS_BUCKET}/temp/',
-        'staging_location': f'gs://{GCS_BUCKET}/staging/',
     },
     dag=dag,
 )
