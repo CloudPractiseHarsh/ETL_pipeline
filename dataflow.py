@@ -29,7 +29,7 @@ except ImportError:
 
 PROJECT_ID = 'gen-lang-client-0351304067'
 REGION = 'us-central1'
-GCS_BUCKET = 'us-central1-dev-a7e94831-bucket'
+GCS_BUCKET = 'us-central1-dev-c626561e-bucket'
 GCS_INPUT_PATH = 'data/input/Cleaned-COVID.csv'
 DATAFLOW_JOB_NAME = 'etl-pipeline'
 BQ_DATASET = 'processed_data'
@@ -51,7 +51,7 @@ default_args = {
 dag = DAG(
     'gcs_dataflow_bigquery_official',
     default_args=default_args,
-    description='ETL Pipeline: GCS → Dataflow → BigQuery (Official Documentation)',
+    description='ETL Pipeline: GCS â†’ Dataflow â†’ BigQuery (Official Documentation)',
     schedule_interval='@daily',
     max_active_runs=1,
     tags=['etl', 'gcs', 'dataflow', 'bigquery', 'official'],
@@ -93,12 +93,12 @@ def check_input_files(**context):
                 validation_summary['total_records'] += file_result.get('record_count', 0)
                 validation_summary['total_size_mb'] += file_result.get('size_mb', 0)
                 
-                logging.info(f"✓ {file_path}: {file_result.get('record_count', 0)} records, "
+                logging.info(f"âœ“ {file_path}: {file_result.get('record_count', 0)} records, "
                            f"{file_result.get('size_mb', 0):.2f} MB")
                 
             except Exception as e:
                 validation_summary['invalid_files'] += 1
-                error_msg = f"❌ {file_path}: {str(e)}"
+                error_msg = f"âŒ {file_path}: {str(e)}"
                 validation_summary['validation_errors'].append(error_msg)
                 logging.error(error_msg)
         
@@ -107,11 +107,11 @@ def check_input_files(**context):
         
         # Log summary
         logging.info(f"""
-        📊 VALIDATION SUMMARY:
-        ✅ Valid files: {validation_summary['valid_files']}
-        ❌ Invalid files: {validation_summary['invalid_files']}
-        📄 Total records: {validation_summary['total_records']:,}
-        💾 Total size: {validation_summary['total_size_mb']:.2f} MB
+        ðŸ“Š VALIDATION SUMMARY:
+        âœ… Valid files: {validation_summary['valid_files']}
+        âŒ Invalid files: {validation_summary['invalid_files']}
+        ðŸ“„ Total records: {validation_summary['total_records']:,}
+        ðŸ’¾ Total size: {validation_summary['total_size_mb']:.2f} MB
         """)
         
         # Fail if any files are invalid
@@ -126,7 +126,7 @@ def check_input_files(**context):
         if validation_summary['total_records'] == 0:
             raise AirflowException("No data records found in any files")
         
-        logging.info("🎉 All files passed validation!")
+        logging.info("ðŸŽ‰ All files passed validation!")
         return True
         
     except Exception as e:
@@ -412,7 +412,7 @@ def prepare_dataflow_parameters(**context):
         'total_size_mb': validation_summary.get('total_size_mb', 0)
     }
     
-    logging.info(f"Prepared Dataflow parameters: {parameters}")
+    logging.info(f"Prepared Dataflow parameters: {parameters}", files, validation_summary, execution_date)
     return parameters
 # Task 1: Check for input files in GCS
 check_input_sensor = GCSObjectExistenceSensor(
@@ -459,17 +459,27 @@ create_bq_dataset = BigQueryCreateEmptyDatasetOperator(
     dag=dag,
 )
 
+
+# Updated Beam operator configuration
 run_dataflow_pipeline = BeamRunPythonPipelineOperator(
     task_id='run_dataflow_pipeline',
     runner=BeamRunnerType.DataflowRunner,
     py_file=f'gs://{GCS_BUCKET}/dataflow_transform.py',
-    pipeline_options='{{ task_instance.xcom_pull(task_ids="prepare_dataflow_parameters") }}',
-    gcp_conn_id='google_cloud_default',  # Use gcp_conn_id
-    dataflow_config={
-        'project_id': PROJECT_ID,
-        'location': REGION,
-        'job_name': DATAFLOW_JOB_NAME,
+    pipeline_options={
+        'project': PROJECT_ID,
+        'region': REGION,
+        'job_name': f'{DATAFLOW_JOB_NAME}-{{{{ ds_nodash }}}}',  # Use template for unique job name
+        'temp_location': f'gs://{GCS_BUCKET}/temp/',
+        'staging_location': f'gs://{GCS_BUCKET}/staging/',
+        'input_file': f'gs://{GCS_BUCKET}/{GCS_INPUT_PATH}',
+        'output_table': f'{PROJECT_ID}:{BQ_DATASET}.{BQ_TABLE}',
+        'runner': 'DataflowRunner',
+        'save_main_session': True,
+        'setup_file': None  # Add if you have a setup.py file
     },
+
+    gcp_conn_id='google_cloud_default',
+    py_interpreter='python3',
     dag=dag,
 )
 
